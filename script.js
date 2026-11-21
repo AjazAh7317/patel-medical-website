@@ -80,6 +80,7 @@ const catalog = document.querySelector('#medicine-catalog');
 const categoryFilter = document.querySelector('#catalog-category');
 const catalogSearch = document.querySelector('#catalog-search');
 const deliveryMedicine = document.querySelector('#delivery-medicine');
+let revealObserver = null;
 Object.entries(medicineCategories).forEach(([category, medicines]) => {
   const categoryOption = document.createElement('option'); categoryOption.value = category; categoryOption.textContent = category; categoryFilter?.append(categoryOption);
   medicines.forEach(name => { const option = document.createElement('option'); option.value = name; option.textContent = name; deliveryMedicine?.append(option); });
@@ -94,13 +95,18 @@ function renderCatalog() {
     if (selectedCategory !== 'all' && selectedCategory !== category) return;
     const filtered = medicines.filter(name => name.toLowerCase().includes(term));
     if (!filtered.length) return;
-    const group = document.createElement('div'); group.className = 'catalog-group';
+    const group = document.createElement('div'); group.className = 'catalog-group reveal';
     const heading = document.createElement('h4'); heading.textContent = category; group.append(heading);
     const list = document.createElement('div'); list.className = 'catalog-pills';
-    filtered.forEach(name => { const pill = document.createElement('button'); pill.type='button'; pill.className='medicine-pill'; pill.textContent=name; pill.addEventListener('click', () => { if (deliveryMedicine) deliveryMedicine.value=name; document.querySelector('#delivery')?.scrollIntoView({behavior:'smooth'}); }); list.append(pill); shown++; });
+    filtered.forEach((name, index) => {
+      const pill = document.createElement('button'); pill.type='button'; pill.className='medicine-pill'; pill.style.setProperty('--pill-index', index); pill.textContent=name;
+      pill.addEventListener('click', () => { if (deliveryMedicine) deliveryMedicine.value=name; document.querySelector('#delivery')?.scrollIntoView({behavior:'smooth'}); });
+      list.append(pill); shown++;
+    });
     group.append(list); catalog.append(group);
   });
   if (!shown) catalog.innerHTML = '<p class="catalog-empty">No matching medicine found in this list.</p>';
+  catalog.querySelectorAll('.reveal').forEach(el => revealObserver?.observe(el));
 }
 catalogSearch?.addEventListener('input', renderCatalog);
 categoryFilter?.addEventListener('change', renderCatalog);
@@ -118,3 +124,42 @@ document.querySelector('#delivery-form')?.addEventListener('submit', event => {
   message += `\n\nPlease confirm stock, prescription requirements, delivery availability and charges. This is a request only.`;
   window.open(wa(message), '_blank', 'noopener,noreferrer');
 });
+
+// Premium scroll reveal + scroll progress indicator
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function setupMotion() {
+  if (reduceMotion) return;
+  document.body.classList.add('motion-ready');
+  const revealTargets = [
+    '.section-heading', '.service-feature', '.pharmacy-copy', '.enquiry-panel',
+    '.physio-heading', '.physio-photo', '.physio-services', '.team-card',
+    '.why-grid > div', '.appointment-copy', '.appointment-form-panel',
+    '.location-info', '.map-card', '.faq-grid > div'
+  ].flatMap(selector => [...document.querySelectorAll(selector)]);
+  revealTargets.forEach((el, index) => {
+    el.classList.add('reveal');
+    el.style.setProperty('--reveal-delay', `${(index % 3) * 100}ms`);
+  });
+  revealObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-visible');
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.12, rootMargin: '0px 0px -35px 0px' });
+  revealTargets.forEach(el => revealObserver.observe(el));
+}
+setupMotion();
+const progressBar = document.querySelector('.scroll-progress span');
+let scrollTicking = false;
+function updateProgress() {
+  const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+  const percent = scrollable > 0 ? Math.min(1, window.scrollY / scrollable) : 0;
+  if (progressBar && !reduceMotion) progressBar.style.transform = `scaleX(${percent})`;
+  scrollTicking = false;
+}
+window.addEventListener('scroll', () => {
+  if (!scrollTicking) { scrollTicking = true; requestAnimationFrame(updateProgress); }
+}, { passive: true });
+updateProgress();
