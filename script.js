@@ -1,7 +1,6 @@
 // Edit this number to change the WhatsApp recipient (digits only, country code included).
-const WHATSAPP_NUMBER = "916388609639";
-const PHONE_PRIMARY = "+916388609639";
-const PHONE_SECONDARY = "+919695647060";
+const WHATSAPP_NUMBER = "919695647060";
+const PHONE_PRIMARY = "+919695647060";
 const wa = (message) => `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
 
 
@@ -63,7 +62,7 @@ const backTop = document.querySelector(".back-top");
 window.addEventListener("scroll", () => backTop?.classList.toggle("visible", window.scrollY > 550), { passive: true });
 backTop?.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
 
-// Starter medicine catalogue and home-delivery enquiry.
+// Medicine directory + intuitive basket-based multi-item ordering.
 const medicineCategories = {
   "Pain and fever medicines": ["Paracetamol","Ibuprofen","Diclofenac","Aceclofenac","Naproxen","Aspirin","Mefenamic Acid","Etoricoxib","Nimesulide","Tramadol"],
   "Antibiotics": ["Amoxicillin","Azithromycin","Ciprofloxacin","Cefixime","Cefuroxime","Cefpodoxime","Doxycycline","Metronidazole","Ofloxacin","Amoxicillin + Clavulanic Acid"],
@@ -79,47 +78,100 @@ const medicineCategories = {
 const catalog = document.querySelector('#medicine-catalog');
 const categoryFilter = document.querySelector('#catalog-category');
 const catalogSearch = document.querySelector('#catalog-search');
-const deliveryMedicine = document.querySelector('#delivery-medicine');
+const deliveryItems = document.querySelector('#delivery-items');
+const cartCount = document.querySelector('#cart-count');
+const cartEmpty = document.querySelector('#cart-empty');
+const customMedicine = document.querySelector('#custom-medicine');
+const quickAddButton = document.querySelector('#quick-add-button');
+const cart = new Map();
 let revealObserver = null;
-Object.entries(medicineCategories).forEach(([category, medicines]) => {
-  const categoryOption = document.createElement('option'); categoryOption.value = category; categoryOption.textContent = category; categoryFilter?.append(categoryOption);
-  medicines.forEach(name => { const option = document.createElement('option'); option.value = name; option.textContent = name; deliveryMedicine?.append(option); });
-});
+if (categoryFilter) {
+  categoryFilter.innerHTML = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = ''; placeholder.textContent = 'Choose a category first'; placeholder.disabled = true; placeholder.selected = true;
+  categoryFilter.append(placeholder);
+  Object.entries(medicineCategories).forEach(([category, medicines]) => {
+    const option = document.createElement('option'); option.value = category; option.textContent = `${category} (${medicines.length})`; categoryFilter.append(option);
+  });
+}
+if (catalogSearch) { catalogSearch.disabled = true; catalogSearch.placeholder = 'Select a category to enable search…'; }
+function addToCart(name) {
+  const normalized = name.trim(); if (!normalized) return;
+  const existing = cart.get(normalized.toLowerCase());
+  if (existing) existing.quantity += 1;
+  else cart.set(normalized.toLowerCase(), {name: normalized, quantity: 1});
+  renderCart();
+  const addBtn = [...document.querySelectorAll('.catalog-add-btn')].find(btn => btn.dataset.medicine?.toLowerCase() === normalized.toLowerCase());
+  if (addBtn) { addBtn.classList.add('just-added'); addBtn.textContent = 'Added ✓'; setTimeout(() => { if (addBtn.isConnected) {addBtn.classList.remove('just-added'); addBtn.textContent = 'Add +';}}, 900); }
+}
+function renderCart() {
+  if (!deliveryItems) return;
+  deliveryItems.querySelectorAll('.cart-item').forEach(el => el.remove());
+  const list = [...cart.values()];
+  if (cartEmpty) cartEmpty.style.display = list.length ? 'none' : 'flex';
+  if (cartCount) cartCount.textContent = String(list.reduce((sum, item) => sum + item.quantity, 0));
+  list.forEach(item => {
+    const row = document.createElement('div'); row.className = 'cart-item';
+    const details = document.createElement('div'); details.className = 'cart-item-details';
+    const name = document.createElement('b'); name.textContent = item.name;
+    const sub = document.createElement('small'); sub.textContent = 'Stock & prescription to be confirmed'; details.append(name, sub);
+    const qtyWrap = document.createElement('div'); qtyWrap.className = 'cart-qty-control';
+    const minus = document.createElement('button'); minus.type = 'button'; minus.className = 'qty-step'; minus.textContent = '−'; minus.setAttribute('aria-label', `Decrease ${item.name} quantity`);
+    const qty = document.createElement('span'); qty.textContent = String(item.quantity); qty.className = 'qty-value';
+    const plus = document.createElement('button'); plus.type = 'button'; plus.className = 'qty-step'; plus.textContent = '+'; plus.setAttribute('aria-label', `Increase ${item.name} quantity`);
+    minus.addEventListener('click', () => { if(item.quantity <= 1) cart.delete(item.name.toLowerCase()); else item.quantity--; renderCart(); });
+    plus.addEventListener('click', () => { item.quantity++; renderCart(); });
+    qtyWrap.append(minus,qty,plus);
+    const remove = document.createElement('button'); remove.type='button'; remove.className='cart-remove'; remove.textContent='Remove'; remove.addEventListener('click',()=>{cart.delete(item.name.toLowerCase());renderCart();});
+    row.append(details,qtyWrap,remove); deliveryItems.append(row);
+  });
+}
 function renderCatalog() {
   if (!catalog) return;
   const term = (catalogSearch?.value || '').trim().toLowerCase();
-  const selectedCategory = categoryFilter?.value || 'all';
+  const selectedCategory = categoryFilter?.value || '';
   catalog.innerHTML = '';
-  let shown = 0;
-  Object.entries(medicineCategories).forEach(([category, medicines]) => {
-    if (selectedCategory !== 'all' && selectedCategory !== category) return;
-    const filtered = medicines.filter(name => name.toLowerCase().includes(term));
-    if (!filtered.length) return;
-    const group = document.createElement('div'); group.className = 'catalog-group reveal';
-    const heading = document.createElement('h4'); heading.textContent = category; group.append(heading);
-    const list = document.createElement('div'); list.className = 'catalog-pills';
-    filtered.forEach((name, index) => {
-      const pill = document.createElement('button'); pill.type='button'; pill.className='medicine-pill'; pill.style.setProperty('--pill-index', index); pill.textContent=name;
-      pill.addEventListener('click', () => { if (deliveryMedicine) deliveryMedicine.value=name; document.querySelector('#delivery')?.scrollIntoView({behavior:'smooth'}); });
-      list.append(pill); shown++;
-    });
-    group.append(list); catalog.append(group);
+  if (!selectedCategory) {
+    if (catalogSearch) { catalogSearch.disabled = true; catalogSearch.placeholder = 'Select a category to enable search…'; }
+    const welcome = document.createElement('div'); welcome.className = 'catalog-category-prompt';
+    welcome.innerHTML = '<div class="catalog-prompt-icon">✚</div><h4>Choose a medicine category</h4><p>Start by selecting a category above. We’ll show only the medicines you’re looking for, keeping the list simple and easy to browse.</p><div class="catalog-prompt-chips"><span>10 categories</span><span>Search within category</span><span>Add to basket</span></div>';
+    catalog.append(welcome);
+    return;
+  }
+  if (catalogSearch) { catalogSearch.disabled = false; catalogSearch.placeholder = `Search ${selectedCategory.toLowerCase()}…`; }
+  const medicines = medicineCategories[selectedCategory] || [];
+  const filtered = medicines.filter(name => name.toLowerCase().includes(term));
+  if (!filtered.length) {
+    catalog.innerHTML = '<p class="catalog-empty">No medicines match your search in this category. Try another name or clear your search.</p>';
+    return;
+  }
+  const group = document.createElement('div'); group.className = 'catalog-group catalog-group-modern catalog-category-results';
+  const heading = document.createElement('h4'); heading.textContent = `${selectedCategory} · ${filtered.length} ${filtered.length === 1 ? 'medicine' : 'medicines'}`; group.append(heading);
+  const list = document.createElement('div'); list.className = 'catalog-medicine-list';
+  filtered.forEach((name, index) => {
+    const item = document.createElement('div'); item.className = 'catalog-medicine-card'; item.style.setProperty('--medicine-index', index);
+    const medIcon = document.createElement('span'); medIcon.className = 'medicine-card-icon'; medIcon.textContent = '✚';
+    const text = document.createElement('span'); text.className = 'catalog-medicine-name'; text.textContent = name;
+    const add = document.createElement('button'); add.type='button'; add.className='catalog-add-btn'; add.dataset.medicine=name; add.textContent='Add +'; add.setAttribute('aria-label',`Add ${name} to basket`);
+    add.addEventListener('click',()=>addToCart(name));
+    item.append(medIcon,text,add); list.append(item);
   });
-  if (!shown) catalog.innerHTML = '<p class="catalog-empty">No matching medicine found in this list.</p>';
-  catalog.querySelectorAll('.reveal').forEach(el => revealObserver?.observe(el));
+  group.append(list); catalog.append(group);
 }
 catalogSearch?.addEventListener('input', renderCatalog);
-categoryFilter?.addEventListener('change', renderCatalog);
-renderCatalog();
+categoryFilter?.addEventListener('change', () => { if (catalogSearch) catalogSearch.value = ''; renderCatalog(); });
+renderCatalog(); renderCart();
+quickAddButton?.addEventListener('click', () => { const name=customMedicine?.value.trim(); if(!name) {customMedicine?.focus();return;} addToCart(name); customMedicine.value=''; });
+customMedicine?.addEventListener('keydown', e => {if(e.key==='Enter'){e.preventDefault();quickAddButton?.click();}});
 document.querySelector('#delivery-form')?.addEventListener('submit', event => {
   event.preventDefault();
-  const medicine = deliveryMedicine.value;
-  const qty = document.querySelector('#delivery-qty').value.trim();
+  const items = [...cart.values()];
+  if (!items.length) { catalog?.scrollIntoView({behavior:'smooth',block:'center'}); return; }
   const name = document.querySelector('#delivery-name').value.trim();
   const phone = document.querySelector('#delivery-phone').value.trim();
   const address = document.querySelector('#delivery-address').value.trim();
   const extra = document.querySelector('#delivery-extra').value.trim();
-  let message = `Hello Patel Medical Store,\n\nI'd like to request medicine home delivery (please confirm availability).\nMedicine: ${medicine}\nQuantity/pack: ${qty}\nName: ${name}\nPhone: ${phone}\nDelivery address: ${address}`;
+  let message = `Hello Patel Medical Store,\n\nI'd like to request medicine home delivery (please confirm availability).\n\nMedicines:\n${items.map((item,i)=>`${i+1}. ${item.name} — Quantity: ${item.quantity}`).join('\n')}\n\nName: ${name}\nPhone: ${phone}\nDelivery address: ${address}`;
   if (extra) message += `\nNote: ${extra}`;
   message += `\n\nPlease confirm stock, prescription requirements, delivery availability and charges. This is a request only.`;
   window.open(wa(message), '_blank', 'noopener,noreferrer');
@@ -163,3 +215,11 @@ window.addEventListener('scroll', () => {
   if (!scrollTicking) { scrollTicking = true; requestAnimationFrame(updateProgress); }
 }, { passive: true });
 updateProgress();
+
+// Extra polish: gentle card tilt on desktop pointer movement and staggered micro-reveals.
+if (!reduceMotion && window.matchMedia('(hover:hover)').matches) {
+  document.querySelectorAll('.service-feature,.team-card,.catalog-panel,.delivery-form-panel,.map-card').forEach(card => {
+    card.addEventListener('pointermove', e => { const r=card.getBoundingClientRect(); const x=(e.clientX-r.left)/r.width-.5; const y=(e.clientY-r.top)/r.height-.5; card.style.setProperty('--tilt-x',`${-y*2.2}deg`); card.style.setProperty('--tilt-y',`${x*2.2}deg`); card.classList.add('pointer-tilt'); });
+    card.addEventListener('pointerleave',()=>{card.classList.remove('pointer-tilt'); card.style.removeProperty('--tilt-x');card.style.removeProperty('--tilt-y');});
+  });
+}
